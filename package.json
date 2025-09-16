@@ -1,0 +1,26 @@
+{
+  "name": "csis3784_assignment3_react",
+  "version": "1.0.0",
+  "description": "This a redo for the project done at BBD VAC work 2025 using React.js",
+  "main": "index.js",
+  "scripts": {
+    "start": "vite",
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MNN05/CSIS3784_Assignment3_React.js.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/MNN05/CSIS3784_Assignment3_React.js/issues"
+  },
+  "homepage": "https://github.com/MNN05/CSIS3784_Assignment3_React.js#readme",
+  "devDependencies": {
+    "vite": "^7.1.5"
+  }
+}
