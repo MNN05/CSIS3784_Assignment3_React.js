@@ -22,5 +22,8 @@
   "homepage": "https://github.com/MNN05/CSIS3784_Assignment3_React.js#readme",
   "devDependencies": {
     "vite": "^7.1.5"
+  },
+  "dependencies": {
+    "react-router-dom": "^7.9.1"
   }
 }
