@@ -15,7 +15,6 @@ body {
   -moz-osx-font-smoothing: grayscale;
   background-color: var(--dark-bg);
   color: var(--neon-blue);
-  overflow: hidden;
   position: relative;
 }
 
@@ -71,6 +70,8 @@ body {
   border: 2px solid var(--neon-purple);
   box-shadow: 0 0 10px var(--neon-purple), 0 0 20px var(--neon-purple);
   min-width: 300px;
+  max-width: 100%;
+  box-sizing: border-box;
   text-shadow: 0 0 5px var(--neon-blue);
   z-index: 2;
   position: relative;
