@@ -93,7 +93,6 @@ h1, h2, h3 {
   100% { text-shadow: 0 0 5px var(--neon-pink); }
 }
 
-/* Buttons */
 .start-button,
 .lobby-button,
 .game-button,
@@ -115,6 +114,33 @@ h1, h2, h3 {
   position: relative;
   overflow: hidden;
 }
+
+/* In src/styles/App.css */
+
+.color-selection-buttons {
+  display: flex;
+  flex-wrap: wrap; 
+  justify-content: center; /* Centers the buttons */
+  gap: 20px; /* Adds space between buttons */
+  margin-top: 30px;
+}
+
+.color-button {
+  width: 100px; 
+  height: 100px; 
+  
+  border: 4px solid #fff;
+  border-radius: 15px; 
+  cursor: pointer;
+  transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3); 
+}
+
+.color-button:hover {
+  transform: scale(1.1); 
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.5);
+}
+
 
 .start-button::before,
 .lobby-button::before,

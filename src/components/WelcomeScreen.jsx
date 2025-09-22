@@ -4,7 +4,7 @@ import '../styles/App.css'; // You can add your styling here
 const WelcomeScreen = ({ onStartClick }) => {
   return (
     <div className="welcome-container">
-      <h1>Welcome to Laser Tag Treasure Hunt!</h1>
+      <h1>Welcome to Laser Tag!</h1>
       <p>Are you ready to play?</p>
       <button className="start-button" onClick={onStartClick}>
         Start

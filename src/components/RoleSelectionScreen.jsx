@@ -14,7 +14,7 @@ const RoleSelectionScreen = ({ onSelectRole }) => {
         </button>
       </div>
     </div>
-  );
+  );	
 };
 
 export default RoleSelectionScreen;
