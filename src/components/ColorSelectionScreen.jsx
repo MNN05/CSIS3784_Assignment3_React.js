@@ -1,7 +1,7 @@
 import React from 'react';
 import '../styles/App.css';
 
-const NEON_COLORS = ['#00e0ff', '#ff00c8', '#8a00ff', '#ffec00', '#00ff41', '#ff6f00', '#ff0000ff', '#080808ff', '#f7f2f4ff'];
+const COLORS = ['#00e0ff', '#ff00c8', '#8a00ff', '#ffec00', '#00ff41', '#000000', '#ffffff', '#808080']; //only limited to these colours(but not in neon form)
 
 const ColorSelectionScreen = ({ onSelectColor }) => {
   return (
@@ -9,7 +9,7 @@ const ColorSelectionScreen = ({ onSelectColor }) => {
       <h2>Select Your Color</h2>
       <p>Choose a color that you are wearing.</p>
       <div className="color-selection-buttons">
-        {NEON_COLORS.map(color => (
+        {COLORS.map(color => (
           <button
             key={color}
             className="color-button"

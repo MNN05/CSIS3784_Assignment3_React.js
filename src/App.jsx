@@ -1,3 +1,5 @@
+//import in the components in a specific order
+//This file handles the client so the server can communicate to the server
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
 import WelcomeScreen from './components/WelcomeScreen.jsx';
@@ -28,7 +30,7 @@ const AppState = {
   RESULTS: '/results'
 };
 
-const NEON_COLORS = ['#00e0ff', '#ff00c8', '#8a00ff', '#ffec00', '#00ff41', '#ff6f00', '#ff0000ff', '#080808ff', '#f7f2f4ff'];
+const COLORS = ['#00e0ff', '#ff00c8', '#8a00ff', '#ffec00', '#00ff41', '#000000', '#ffffff', '#808080'];
 
 function App() {
   const [gameInfo, setGameInfo] = useState({ code: null, username: null, role: null, isHost: false });
@@ -40,7 +42,7 @@ function App() {
   useEffect(() => {
     // Only connect if WebSocket is not already open
     if (!ws || ws.readyState === WebSocket.CLOSED) {
-      const websocket = new WebSocket('ws://196.255.149.216:8080');
+      const websocket = new WebSocket('ws://192.168.101.110:8080');
       setWs(websocket);
 
       websocket.onopen = () => {
@@ -124,28 +126,45 @@ function App() {
   };
 
   const handleJoinUsername = (username) => {
+    // Update the gameInfo state with the entered username
     setGameInfo({ ...gameInfo, username: username });
+
+    // If the user is the host, first tell the server to create the game
     if (gameInfo.isHost) {
-      if (ws) {
+      if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'create-game', gameCode: gameInfo.code }));
       }
     }
+    
+    // Now, regardless of whether they are a host or a regular player,
+    // everyone is directed to the role selection screen.
     navigate(AppState.ROLE_SELECTION);
   };
 
   const handleSelectRole = (role) => {
+    setGameInfo({ ...gameInfo, role: role });
     if (role === 'player') {
-      setGameInfo({ ...gameInfo, role: role });
       navigate(AppState.COLOR_SELECTION);
     } else if (role === 'spectator') {
-      const player = { username: gameInfo.username, role: 'spectator', points: 0, color: '#f7f2f4ff' };
-      if (ws) {
+      // Create the player object for the spectator
+      const player = { 
+        username: gameInfo.username, 
+        role: 'spectator', 
+        points: 0, 
+        color: '#f7f2f4ff' 
+      };
+
+      // Send the join-lobby message to the server
+      if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({
           type: 'join-lobby',
           gameCode: gameInfo.code,
           player
         }));
       }
+
+      // Explicitly navigate to the spectator view
+      navigate(AppState.SPECTATOR_VIEW);
     }
   };
 
@@ -200,7 +219,7 @@ function App() {
         <Route path={AppState.COLOR_SELECTION} element={<ColorSelectionScreen onSelectColor={handleSelectColor} />} />
         <Route path={AppState.PLAYER_LOBBY} element={<PlayerWaitingLobby gameInfo={gameInfo} players={players} onStartGame={handleStartGame} />} />
         <Route path={AppState.GAME} element={<GameScreen gameInfo={gameInfo} players={players} timeRemaining={timeRemaining} />} />
-        <Route path={AppState.SPECTATOR_VIEW} element={<SpectatorView gameInfo={gameInfo} players={players} timeRemaining={timeRemaining} />} />
+        <Route path={AppState.SPECTATOR_VIEW} element={<SpectatorView gameInfo={gameInfo} players={players} timeRemaining={timeRemaining} onStartGame={handleStartGame} />} />
         <Route path={AppState.RESULTS} element={<ResultsScreen players={players} onExitGame={handleExitGame} />} />
       </Routes>
     </div>

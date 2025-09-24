@@ -1,5 +1,4 @@
 const WebSocket = require('ws');
-//const server = new WebSocket.Server({ port: 8080 });
 const server = new WebSocket.Server({ host: '0.0.0.0', port: 8080 });
 
 console.log('WebSocket server is running on port 8080');
@@ -20,12 +19,17 @@ server.on('connection', ws => {
     console.log('Client connected');
     ws.on('message', message => {
         const data = JSON.parse(message);
-        const { type, gameCode, player } = data;
+        const { type, gameCode, player, shooterUsername, targetUsername } = data;
+
+        let game;
+        if (gameCode) {
+            game = games[gameCode];
+        }
 
         switch (type) {
             case 'create-game':
                 console.log(`Creating new game with code: ${gameCode}`);
-                games[gameCode] = { players: [], clients: new Set(), hostId: ws._socket.remoteAddress, timer: null };
+                games[gameCode] = { players: [], clients: new Set(), hostWs: ws, timer: null };
                 ws.gameCode = gameCode;
                 ws.username = 'Host';
                 games[gameCode].clients.add(ws);
@@ -43,9 +47,9 @@ server.on('connection', ws => {
 
             case 'join-lobby':
                 console.log(`User ${player.username} joining game ${gameCode} as ${player.role}`);
-                if (games[gameCode]) {
+                if (game) {
                     if (player.role === 'player') {
-                        const colorTaken = games[gameCode].players.some(p => p.color === player.color);
+                        const colorTaken = game.players.some(p => p.color === player.color && p.role === 'player');
                         if (colorTaken) {
                             ws.send(JSON.stringify({
                                 type: 'color-taken',
@@ -55,17 +59,17 @@ server.on('connection', ws => {
                         }
                     }
 
-                    const existingPlayerIndex = games[gameCode].players.findIndex(p => p.username === player.username);
+                    // Determine if the joining player is the host
+                    const isHost = ws === game.hostWs;
+
+                    const existingPlayerIndex = game.players.findIndex(p => p.username === player.username);
                     if (existingPlayerIndex !== -1) {
-                        games[gameCode].players[existingPlayerIndex].isHost = (ws._socket.remoteAddress === games[gameCode].hostId);
-                        games[gameCode].players[existingPlayerIndex].color = player.color;
-                        games[gameCode].players[existingPlayerIndex].role = player.role;
+                        game.players[existingPlayerIndex] = { ...game.players[existingPlayerIndex], ...player, ws, isHost };
                     } else {
-                        player.isHost = (ws._socket.remoteAddress === games[gameCode].hostId);
-                        games[gameCode].players.push(player);
+                        game.players.push({ ...player, ws, points: 0, isHost });
                     }
 
-                    games[gameCode].clients.add(ws);
+                    game.clients.add(ws);
                     ws.gameCode = gameCode;
                     ws.username = player.username;
                     ws.role = player.role;
@@ -73,20 +77,29 @@ server.on('connection', ws => {
                     if (player.role === 'spectator') {
                         ws.send(JSON.stringify({ type: 'spectator-joined' }));
                     }
-                    
+
+                    // Correctly format the player list for broadcast
+                    const playersWithoutWs = game.players.map(p => ({
+                        username: p.username,
+                        color: p.color,
+                        role: p.role,
+                        points: p.points,
+                        isHost: p.isHost
+                    }));
+
                     broadcastToGame(gameCode, {
                         type: 'player-list-update',
-                        players: games[gameCode].players.map(p => ({ ...p, ws: undefined }))
+                        players: playersWithoutWs
                     });
                 }
                 break;
 
             case 'start-game':
-                if (ws._socket.remoteAddress === games[gameCode].hostId && !games[gameCode].timer) {
+                if (ws === game.hostWs && !game.timer) {
                     console.log(`Host is starting game ${gameCode}`);
                     let timeRemaining = 300;
                     
-                    for (const client of games[gameCode].clients) {
+                    for (const client of game.clients) {
                         if (client.readyState === WebSocket.OPEN) {
                             if (client.role === 'player') {
                                 client.send(JSON.stringify({ type: 'game-started-player' }));
@@ -96,7 +109,7 @@ server.on('connection', ws => {
                         }
                     }
 
-                    games[gameCode].timer = setInterval(() => {
+                    game.timer = setInterval(() => {
                         timeRemaining--;
                         broadcastToGame(gameCode, {
                             type: 'timer-update',
@@ -104,9 +117,10 @@ server.on('connection', ws => {
                         });
 
                         if (timeRemaining <= 0) {
-                            clearInterval(games[gameCode].timer);
-                            games[gameCode].timer = null;
-                            broadcastToGame(gameCode, { type: 'game-over', players: games[gameCode].players.map(p => ({ ...p, ws: undefined })) });
+                            clearInterval(game.timer);
+                            game.timer = null;
+                            const finalPlayers = game.players.map(p => ({ ...p, ws: undefined }));
+                            broadcastToGame(gameCode, { type: 'game-over', players: finalPlayers });
                             console.log(`Game over for ${gameCode}`);
                         }
                     }, 1000);
@@ -116,7 +130,33 @@ server.on('connection', ws => {
                 break;
 
             case 'hit':
-                // (Logic for handling a hit)
+                if (game) {
+                    const shooter = game.players.find(p => p.username === shooterUsername);
+                    const target = game.players.find(p => p.username === targetUsername);
+
+                    if (shooter && target) {
+                        console.log(`${shooter.username} hit ${target.username}`);
+                        if (shooter.color === target.color) {
+                            shooter.points -= 5;
+                            console.log(`${shooter.username} lost 5 points (friendly fire). New score: ${shooter.points}`);
+                        } else {
+                            shooter.points += 15;
+                            console.log(`${shooter.username} gained 15 points. New score: ${shooter.points}`);
+                        }
+
+                        const playersWithoutWs = game.players.map(p => ({
+                            username: p.username,
+                            color: p.color,
+                            role: p.role,
+                            points: p.points,
+                            isHost: p.isHost
+                        }));
+                        broadcastToGame(gameCode, {
+                            type: 'player-list-update',
+                            players: playersWithoutWs
+                        });
+                    }
+                }
                 break;
 
             default:
@@ -126,25 +166,29 @@ server.on('connection', ws => {
 
     ws.on('close', () => {
         console.log('Client disconnected');
-        if (ws.gameCode && games[ws.gameCode]) {
-            games[ws.gameCode].clients.delete(ws);
-            if (ws.role === 'player') {
-                const playerIndex = games[ws.gameCode].players.findIndex(p => p.username === ws.username);
-                if (playerIndex !== -1) {
-                    games[ws.gameCode].players.splice(playerIndex, 1);
-                    broadcastToGame(ws.gameCode, {
+        for (const gameCode in games) {
+            const game = games[gameCode];
+            const playerIndex = game.players.findIndex(p => p.ws === ws);
+            if (playerIndex !== -1) {
+                const player = game.players.splice(playerIndex, 1)[0];
+                console.log(`Player ${player.username} left game ${gameCode}.`);
+
+                game.clients.delete(ws);
+
+                if (game.clients.size === 0) {
+                    if (game.timer) {
+                        clearInterval(game.timer);
+                    }
+                    delete games[gameCode];
+                    console.log(`Game ${gameCode} deleted as no clients remain.`);
+                } else {
+                    const playersWithoutWs = game.players.map(p => ({ ...p, ws: undefined }));
+                    broadcastToGame(gameCode, {
                         type: 'player-list-update',
-                        players: games[ws.gameCode].players.map(p => ({ ...p, ws: undefined }))
+                        players: playersWithoutWs
                     });
                 }
-            }
-
-            if (games[ws.gameCode].clients.size === 0) {
-                if (games[ws.gameCode].timer) {
-                    clearInterval(games[ws.gameCode].timer);
-                }
-                delete games[ws.gameCode];
-                console.log(`Game ${ws.gameCode} is now empty and has been removed.`);
+                break;
             }
         }
     });

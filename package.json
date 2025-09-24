@@ -24,6 +24,7 @@
     "vite": "^7.1.5"
   },
   "dependencies": {
-    "react-router-dom": "^7.9.1"
+    "react-router-dom": "^7.9.1",
+    "simple-peer": "^9.11.1"
   }
 }
