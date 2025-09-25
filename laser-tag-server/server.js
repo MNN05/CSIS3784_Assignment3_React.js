@@ -1,120 +1,199 @@
 const WebSocket = require('ws');
+const server = new WebSocket.Server({ host: '0.0.0.0', port: 8080 });
 
-const wss = new WebSocket.Server({ port: 8080 });
+console.log('WebSocket server is running on port 8080');
 
-// This object will hold the state for all games.
-// The key is the game code, and the value is the game object.
 const games = {};
 
-// Helper function to send a message to all clients in a specific game
 const broadcastToGame = (gameCode, message) => {
-  if (games[gameCode]) {
-    games[gameCode].clients.forEach(client => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(JSON.stringify(message));
-      }
-    });
-  }
+    if (games[gameCode]) {
+        for (const client of games[gameCode].clients) {
+            if (client.readyState === WebSocket.OPEN) {
+                client.send(JSON.stringify(message));
+            }
+        }
+    }
 };
 
-wss.on('connection', ws => {
-  console.log('Client connected!');
-  
-  // Store connection details with the WebSocket instance
-  ws.gameCode = null;
-  ws.username = null;
+server.on('connection', ws => {
+    console.log('Client connected');
+    ws.on('message', message => {
+        const data = JSON.parse(message);
+        const { type, gameCode, player, shooterUsername, targetUsername } = data;
 
-  ws.on('message', message => {
-    const data = JSON.parse(message);
-    const { type, gameCode, player, shooter, hitColor } = data;
-
-    switch (type) {
-      case 'join-lobby':
-        // A player is joining a game lobby.
-        console.log(`Player ${player.username} joining game ${gameCode}`);
-        
-        // Find or create the game
-        if (!games[gameCode]) {
-          games[gameCode] = { players: [], clients: new Set(), state: 'waiting' };
-        }
-        
-        // Add player to the game if they are not already there
-        const existingPlayer = games[gameCode].players.find(p => p.username === player.username);
-        if (!existingPlayer) {
-          games[gameCode].players.push(player);
+        let game;
+        if (gameCode) {
+            game = games[gameCode];
         }
 
-        // Add the client to the set of clients for this game
-        games[gameCode].clients.add(ws);
-        ws.gameCode = gameCode;
-        ws.username = player.username;
+        switch (type) {
+            case 'create-game':
+                console.log(`Creating new game with code: ${gameCode}`);
+                games[gameCode] = { players: [], clients: new Set(), hostWs: ws, timer: null };
+                ws.gameCode = gameCode;
+                ws.username = 'Host';
+                games[gameCode].clients.add(ws);
+                break;
 
-        // Broadcast the updated player list to all clients in this game
-        broadcastToGame(gameCode, { 
-          type: 'player-list-update',
-          players: games[gameCode].players 
-        });
-        break;
+            case 'check-game-code':
+                console.log(`Checking game code: ${gameCode}`);
+                const isValid = !!games[gameCode];
+                ws.send(JSON.stringify({
+                    type: 'game-code-status',
+                    isValid: isValid,
+                    gameCode: gameCode
+                }));
+                break;
 
-      case 'start-game':
-        // The host has requested to start the game
-        console.log(`Starting game ${gameCode}`);
-        if (games[gameCode]) {
-          games[gameCode].state = 'in-progress';
-          broadcastToGame(gameCode, { type: 'game-started' });
+            case 'join-lobby':
+                console.log(`User ${player.username} joining game ${gameCode} as ${player.role}`);
+                if (game) {
+                    if (player.role === 'player') {
+                        const colorTaken = game.players.some(p => p.color === player.color && p.role === 'player');
+                        if (colorTaken) {
+                            ws.send(JSON.stringify({
+                                type: 'color-taken',
+                                message: 'This color is already taken. Please choose another.'
+                            }));
+                            return;
+                        }
+                    }
+
+                    // Determine if the joining player is the host
+                    const isHost = ws === game.hostWs;
+
+                    const existingPlayerIndex = game.players.findIndex(p => p.username === player.username);
+                    if (existingPlayerIndex !== -1) {
+                        game.players[existingPlayerIndex] = { ...game.players[existingPlayerIndex], ...player, ws, isHost };
+                    } else {
+                        game.players.push({ ...player, ws, points: 0, isHost });
+                    }
+
+                    game.clients.add(ws);
+                    ws.gameCode = gameCode;
+                    ws.username = player.username;
+                    ws.role = player.role;
+
+                    if (player.role === 'spectator') {
+                        ws.send(JSON.stringify({ type: 'spectator-joined' }));
+                    }
+
+                    // Correctly format the player list for broadcast
+                    const playersWithoutWs = game.players.map(p => ({
+                        username: p.username,
+                        color: p.color,
+                        role: p.role,
+                        points: p.points,
+                        isHost: p.isHost
+                    }));
+
+                    broadcastToGame(gameCode, {
+                        type: 'player-list-update',
+                        players: playersWithoutWs
+                    });
+                }
+                break;
+
+            case 'start-game':
+                if (ws === game.hostWs && !game.timer) {
+                    console.log(`Host is starting game ${gameCode}`);
+                    let timeRemaining = 300;
+                    
+                    for (const client of game.clients) {
+                        if (client.readyState === WebSocket.OPEN) {
+                            if (client.role === 'player') {
+                                client.send(JSON.stringify({ type: 'game-started-player' }));
+                            } else if (client.role === 'spectator') {
+                                client.send(JSON.stringify({ type: 'game-started-spectator' }));
+                            }
+                        }
+                    }
+
+                    game.timer = setInterval(() => {
+                        timeRemaining--;
+                        broadcastToGame(gameCode, {
+                            type: 'timer-update',
+                            timeRemaining: timeRemaining
+                        });
+
+                        if (timeRemaining <= 0) {
+                            clearInterval(game.timer);
+                            game.timer = null;
+                            const finalPlayers = game.players.map(p => ({ ...p, ws: undefined }));
+                            broadcastToGame(gameCode, { type: 'game-over', players: finalPlayers });
+                            console.log(`Game over for ${gameCode}`);
+                        }
+                    }, 1000);
+                } else {
+                    console.log('Non-host tried to start the game or game is already in progress.');
+                }
+                break;
+
+            case 'hit':
+                if (game) {
+                    const shooter = game.players.find(p => p.username === shooterUsername);
+                    const target = game.players.find(p => p.username === targetUsername);
+
+                    if (shooter && target) {
+                        console.log(`${shooter.username} hit ${target.username}`);
+                        if (shooter.color === target.color) {
+                            shooter.points -= 5;
+                            console.log(`${shooter.username} lost 5 points (friendly fire). New score: ${shooter.points}`);
+                        } else {
+                            shooter.points += 15;
+                            console.log(`${shooter.username} gained 15 points. New score: ${shooter.points}`);
+                        }
+
+                        const playersWithoutWs = game.players.map(p => ({
+                            username: p.username,
+                            color: p.color,
+                            role: p.role,
+                            points: p.points,
+                            isHost: p.isHost
+                        }));
+                        broadcastToGame(gameCode, {
+                            type: 'player-list-update',
+                            players: playersWithoutWs
+                        });
+                    }
+                }
+                break;
+
+            default:
+                console.log('Unknown message type received:', type);
         }
-        break;
+    });
 
-      case 'hit':
-        // A player has hit a target.
-        if (games[gameCode]) {
-          let updatedPlayers = [...games[gameCode].players];
-          const shooterPlayer = updatedPlayers.find(p => p.username === shooter);
-          const targetPlayer = updatedPlayers.find(p => p.color === hitColor);
+    ws.on('close', () => {
+        console.log('Client disconnected');
+        for (const gameCode in games) {
+            const game = games[gameCode];
+            const playerIndex = game.players.findIndex(p => p.ws === ws);
+            if (playerIndex !== -1) {
+                const player = game.players.splice(playerIndex, 1)[0];
+                console.log(`Player ${player.username} left game ${gameCode}.`);
 
-          if (shooterPlayer) {
-            if (shooterPlayer.color === hitColor) {
-              // They hit their own color - lose 3 points
-              shooterPlayer.points -= 3;
-            } else if (targetPlayer) {
-              // They hit an opponent - gain 10 points
-              shooterPlayer.points += 10;
+                game.clients.delete(ws);
+
+                if (game.clients.size === 0) {
+                    if (game.timer) {
+                        clearInterval(game.timer);
+                    }
+                    delete games[gameCode];
+                    console.log(`Game ${gameCode} deleted as no clients remain.`);
+                } else {
+                    const playersWithoutWs = game.players.map(p => ({ ...p, ws: undefined }));
+                    broadcastToGame(gameCode, {
+                        type: 'player-list-update',
+                        players: playersWithoutWs
+                    });
+                }
+                break;
             }
-          }
-          
-          // Update the player list and broadcast the score update
-          games[gameCode].players = updatedPlayers;
-          broadcastToGame(gameCode, {
-            type: 'player-list-update',
-            players: updatedPlayers
-          });
         }
-        break;
-      
-      default:
-        console.log('Unknown message type:', type);
-        break;
-    }
-  });
+    });
 
-  ws.on('close', () => {
-    console.log('Client disconnected.');
-    if (ws.gameCode && games[ws.gameCode]) {
-      // Remove the disconnected client from the game's client set
-      games[ws.gameCode].clients.delete(ws);
-      console.log(`Client disconnected from game ${ws.gameCode}`);
-
-      // Optional: Clean up empty game rooms
-      if (games[ws.gameCode].clients.size === 0) {
-        delete games[ws.gameCode];
-        console.log(`Game ${ws.gameCode} is now empty and has been removed.`);
-      }
-    }
-  });
-
-  ws.on('error', error => {
-    console.error('WebSocket error:', error);
-  });
+    ws.on('error', error => {
+        console.error('WebSocket Error:', error);
+    });
 });
-
-console.log('WebSocket server is running on port 8080.');

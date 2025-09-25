@@ -1,5 +1,5 @@
 import React from 'react';
-import '../styles/App.css'; // You can add your styling here
+import '../styles/App.css'; 
 
 const WelcomeScreen = ({ onStartClick }) => {
   return (
