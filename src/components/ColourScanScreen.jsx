@@ -1,11 +1,11 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { startColorDetection } from '../colourDetection';
 
-const ColorScanScreen = ({ ws, gameInfo, onColorSelected }) => {
+const ColorScanScreen = ({ ws, gameInfo, onSelectColor, statusMessage, errorMessage }) => {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const [detectedColor, setDetectedColor] = useState(null);
-  const [statusMessage, setStatusMessage] = useState('Scanning...');
+  const [localStatus, setLocalStatus] = useState('Scanning...');
 
   useEffect(() => {
     const getVideo = async () => {
@@ -27,32 +27,18 @@ const ColorScanScreen = ({ ws, gameInfo, onColorSelected }) => {
     if (videoRef.current && canvasRef.current) {
       startColorDetection(videoRef.current, canvasRef.current, (color) => {
         setDetectedColor(color);
-        setStatusMessage(`Detected Color: ${color}`);
+        setLocalStatus(`Detected Color: ${color}`);
       });
     }
   }, [videoRef, canvasRef]);
 
-  useEffect(() => {
-    if (ws?.current) {
-      ws.current.onmessage = (event) => {
-        const message = JSON.parse(event.data);
-        if (message.type === 'color-selection-success') {
-          // The server confirmed the color, now we can proceed
-          onColorSelected(message.color);
-        } else if (message.type === 'color-selection-failed') {
-          // The color was already taken, so display a message
-          setStatusMessage('That color is already taken. Please try another!');
-        }
-      };
-    }
-  }, [ws, onColorSelected]);
+  // No ws.onmessage here! All WebSocket handling is in App.jsx
 
   const handleConfirmColor = () => {
     if (!detectedColor) return;
-    setStatusMessage('Submitting color...');
-    
-    if (ws?.current && gameInfo?.code && gameInfo?.username) {
-      ws.current.send(JSON.stringify({
+    setLocalStatus('Submitting color...');
+    if (ws && gameInfo?.code && gameInfo?.username) {
+      ws.send(JSON.stringify({
         type: 'player-color-selected',
         gameCode: gameInfo.code,
         username: gameInfo.username,
@@ -66,7 +52,8 @@ const ColorScanScreen = ({ ws, gameInfo, onColorSelected }) => {
       <h2>Scan Your Color</h2>
       <video ref={videoRef} autoPlay muted playsInline width={640} height={480} />
       <canvas ref={canvasRef} width={640} height={480} style={{ display: 'none' }} />
-      <p>Status: <strong>{statusMessage}</strong></p>
+      <p>Status: <strong>{statusMessage || localStatus}</strong></p>
+      {errorMessage && <p style={{ color: 'var(--neon-pink)' }}>{errorMessage}</p>}
       <button className="start-button" onClick={handleConfirmColor} disabled={!detectedColor}>
         Confirm Color
       </button>

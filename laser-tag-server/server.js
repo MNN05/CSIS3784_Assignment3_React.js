@@ -19,7 +19,7 @@ server.on('connection', ws => {
     console.log('Client connected');
     ws.on('message', message => {
         const data = JSON.parse(message);
-        const { type, gameCode, player, shooterUsername, targetUsername } = data;
+        const { type, gameCode, player, shooterUsername, targetUsername, username, color } = data;
 
         let game;
         if (gameCode) {
@@ -58,7 +58,7 @@ server.on('connection', ws => {
                             return;
                         }
                     }
-
+                    
                     // Determine if the joining player is the host
                     const isHost = ws === game.hostWs;
 
@@ -91,6 +91,39 @@ server.on('connection', ws => {
                         type: 'player-list-update',
                         players: playersWithoutWs
                     });
+                }
+                break;
+            case 'player-color-selected':
+                console.log(`Player ${username} selected color ${color} in game ${gameCode}`);
+                if (game) {
+                    const colorTaken = game.players.some(p => p.color === color);
+                    if (colorTaken) {
+                        ws.send(JSON.stringify({
+                            type: 'color-selection-failed',
+                            message: 'This color is already taken. Please choose another.'
+                        }));
+                    } else {
+                       const playertoUpdate = game.players.find(p => p.username === username);
+                       if (playertoUpdate) {
+                           playertoUpdate.color = color;
+                           ws.send(JSON.stringify({
+                               type: 'color-selection-success',
+                               color: color
+                           }));
+                       }
+
+                    const playersWithoutWs = game.players.map(p => ({
+                        username: p.username,
+                        color: p.color,
+                        role: p.role,
+                        points: p.points,
+                        isHost: p.isHost
+                    }));
+                    broadcastToGame(gameCode, {
+                        type: 'player-list-update',
+                        players: playersWithoutWs
+                    });
+                }
                 }
                 break;
 

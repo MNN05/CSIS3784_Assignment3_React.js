@@ -1,3 +1,4 @@
+//2019261599
 //import in the components in a specific order
 //This file handles the client so the server can communicate to the server
 import React, { useState, useEffect } from 'react';
@@ -36,13 +37,15 @@ function App() {
   const [gameInfo, setGameInfo] = useState({ code: null, username: null, role: null, isHost: false });
   const [players, setPlayers] = useState([]);
   const [ws, setWs] = useState(null);
+  const [colorStatus, setColorStatus] = useState('');
+  const [colorError, setColorError] = useState('');
   const [timeRemaining, setTimeRemaining] = useState(0);
   const navigate = useNavigate();
 
   useEffect(() => {
     // Only connect if WebSocket is not already open
     if (!ws || ws.readyState === WebSocket.CLOSED) {
-      const websocket = new WebSocket('ws://192.168.101.110:8080');
+      const websocket = new WebSocket('ws://localhost:8080');
       setWs(websocket);
 
       websocket.onopen = () => {
@@ -58,10 +61,15 @@ function App() {
             setPlayers(message.players);
             break;
           case 'color-selection-success':
-            // Navigate to the player lobby only after the color is confirmed by the server
+            setColorStatus('Color confirmed!');
+            setColorError('');
             setPlayers(message.players); // The server should send the updated list of players
             setGameInfo(prevInfo => ({...prevInfo, color: message.color}));
             navigate(AppState.PLAYER_LOBBY);
+            break;
+          case 'color-selection-failed':
+            setColorError('That color is already taken. Please try another!');
+            setColorStatus('');
             break;
           case 'game-started-player':
             navigate(AppState.GAME);
@@ -171,9 +179,9 @@ function App() {
     }
   };
 
-  const handleSelectColor = (color) => {
+  const handleConfirmColor = (color) => {
     const player = { username: gameInfo.username, color, points: 0, role: 'player' };
-    if (ws) {
+    if (ws) {   
       ws.send(JSON.stringify({
         type: 'join-lobby',
         gameCode: gameInfo.code,
@@ -219,7 +227,7 @@ function App() {
         <Route path={AppState.JOIN_GAME} element={<JoinGameScreen onJoinGame={handleJoinGameCode} />} />
         <Route path={AppState.JOIN_USERNAME} element={<JoinUsernameScreen onFinalJoin={handleJoinUsername} />} />
         <Route path={AppState.ROLE_SELECTION} element={<RoleSelectionScreen onSelectRole={handleSelectRole} />} />
-        <Route path={AppState.COLOR_SELECTION} element={<ColorScanScreen onSelectColor={handleSelectColor} />} />
+  <Route path={AppState.COLOR_SELECTION} element={<ColorScanScreen ws={ws} gameInfo={gameInfo} onSelectColor={handleConfirmColor} statusMessage={colorStatus} errorMessage={colorError} />} />
         <Route path={AppState.PLAYER_LOBBY} element={<PlayerWaitingLobby gameInfo={gameInfo} players={players} onStartGame={handleStartGame} />} />
         <Route path={AppState.GAME} element={<GameScreen gameInfo={gameInfo} players={players} timeRemaining={timeRemaining} />} />
         <Route path={AppState.SPECTATOR_VIEW} element={<SpectatorView gameInfo={gameInfo} players={players} timeRemaining={timeRemaining} onStartGame={handleStartGame} />} />
